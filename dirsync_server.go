@@ -123,7 +123,7 @@ func startTcpServer() bool {
 	if err != nil {
 		fmt.Println("create listener failed. err:", err)
 		return false
-	}
+	}~
 
 	fmt.Println("waiting client...")
 
