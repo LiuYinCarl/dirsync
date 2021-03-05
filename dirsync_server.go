@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"net"
 )
 
 var (
@@ -55,9 +56,32 @@ func ShowProgress() {
 }
 
 // 给客户端传输单个文件
-// TODO: 是否有问价大小的限制
-func SendFile() {
+func SendFile(path string, conn net.Conn) bool {
+	file, err := os.Open(path)
+	if err != nil {
+		fmt.Printf("load file failed. path:%s\n", path)
+		return false
+	}
+	defer file.Close()
 
+	buf := make([]byte, 4096)
+
+	// 循环读取文件内容，写入客户端
+	for {
+		n, err := file.Read(buf)
+		if err == io.EOF {
+			fmt.Printf("Send finish: %s\n", path)
+			return true
+		}
+
+		_, err = conn.Write(buf[:n])
+		if err != nil {
+			fmt.Printf("send failed: %s error:%v", path, err)
+			return false
+		}
+	}
+
+	return true
 }
 
 func writeRecord(record string) {
@@ -83,9 +107,42 @@ func processRecord(path string, info os.FileInfo, err error) error {
 	return nil
 }
 
+// 给客户端发送 dirMap 文件
+func SendDirMap(conn net.Conn) {
+	fmt.Printf("sending dirMap file: %s", dirMapFilePath)
+
+	_, err := co
+}
+
 // 启动TCP服务器，等待客户端的连接
-func startTcpServer() {
+func startTcpServer() bool {
 	fmt.Printf("Starting TCP server...")
+	addr := "127.0.0.1:13344"
+
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		fmt.Println("create listener failed. err:", err)
+		return false
+	}
+
+	fmt.Println("waiting client...")
+
+	conn, err := listener.Accept()
+	if err != nil {
+		fmt.Println("accept connection failed. err:", err)
+		return false
+	}
+
+	
+	
+
+
+
+	fmt.Println("send dirMap finish. waiting client request files...")
+
+	// 等待客户端请求文件
+
+	
 
 }
 
