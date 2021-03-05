@@ -10,7 +10,9 @@ import (
 )
 
 var (
-	rootDir       string
+	// for flag
+	rootDir       string  // 需要传输的文件夹路径
+
 	totalFileNum  uint64
 	sendedFileNum uint64
 	usedTime      uint64 // 传输文件的时间
@@ -22,6 +24,8 @@ var (
 
 	dirFlag  string
 	fileFlag string
+
+	listenAddr string
 )
 
 func init() {
@@ -29,11 +33,13 @@ func init() {
 	dirFlag = "D"
 	fileFlag = "F"
 
+	listenAddr = "127.0.0.1:13344"
+
 	dirMapFilePath = "./dirMap.txt"
 	// TODO: os.ModePerm 不合适，需要换成普通文件权限
 	dirMapFilePtr, err := os.OpenFile(dirMapFilePath, os.O_CREATE|os.O_RDWR, os.ModePerm)
 	if err != nil { // TODO 在init函数里打开文件是否合适
-		fmt.Printf("open dirMapFile Failed. %v", err)
+		fmt.Printf("open dirMapFile Failed. %v\n", err)
 		return
 	}
 
@@ -76,7 +82,7 @@ func SendFile(path string, conn net.Conn) bool {
 
 		_, err = conn.Write(buf[:n])
 		if err != nil {
-			fmt.Printf("send failed: %s error:%v", path, err)
+			fmt.Printf("send failed: %s error:%v\n", path, err)
 			return false
 		}
 	}
@@ -91,7 +97,7 @@ func writeRecord(record string) {
 // 处理文件遍历过程中的单条记录
 func processRecord(path string, info os.FileInfo, err error) error {
 	if err != nil {
-		fmt.Printf("error:%v", err)
+		fmt.Println("error:", err)
 		return err
 	}
 
@@ -107,23 +113,67 @@ func processRecord(path string, info os.FileInfo, err error) error {
 	return nil
 }
 
-// 给客户端发送 dirMap 文件
-func SendDirMap(conn net.Conn) {
-	fmt.Printf("sending dirMap file: %s", dirMapFilePath)
+func checkFileExist(path string) bool {
+	fileInfo, err := os.Stat(path)
+	if err != nil {
+		fmt.Println("no such file or dir:", path)
+		return false
+	}
+	if fileInfo.IsFile() {
+		return true
+	} else {
+		fmt.Println("path is a dir:", path)
+		return false
+	}
+}
 
-	_, err := co
+// 给客户端发送 dirMap 文件
+func sendDirMap(conn net.Conn) {
+	fmt.Println("sending dirMap file:", dirMapFilePath)
+
+	bResult := sendFile(dirMapFilePath, conn)
+	return bResult
+}
+
+// 等待客户端请求文件夹内容
+func processDirRequest(conn net.Conn) bool {
+	buf := make([]byte, 4096)
+	for {
+		// 等待客户端发过来文件请求或者请求完成信息
+		n, err := conn.Read(buf)
+		if err != nil {  // TODO: 服务端程序直接退出不合适，可以考虑记录所有传输失败的文件，稍后进行重传尝试
+			fmt.Println("conn read err:", err)
+			return false
+		}
+
+		path := string(buf[:n])
+
+		// 收到客户端传递的传输完成信息
+		if path == "IFinishPleaseCloseMe" {
+			return true
+		}
+		
+		// 校验文件是否合法
+		if bOk := checkFileExist(path); !bResult {
+			return false
+		}
+
+		// 传输文件
+		if bOk := SendFile(path, conn); !bOk {
+			return false
+		}
+	}
 }
 
 // 启动TCP服务器，等待客户端的连接
-func startTcpServer() bool {
+func startTCPServer() bool {
 	fmt.Printf("Starting TCP server...")
-	addr := "127.0.0.1:13344"
 
-	listener, err := net.Listen("tcp", addr)
+	listener, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		fmt.Println("create listener failed. err:", err)
 		return false
-	}~
+	}
 
 	fmt.Println("waiting client...")
 
@@ -132,18 +182,14 @@ func startTcpServer() bool {
 		fmt.Println("accept connection failed. err:", err)
 		return false
 	}
+	defer conn.Close()
 
-	
-	
-
-
-
+	sendDirMap(conn)
 	fmt.Println("send dirMap finish. waiting client request files...")
 
-	// 等待客户端请求文件
-
+	bOk = processDirRequest(conn)
 	
-
+	return bOk
 }
 
 // 根据传入的目录，创建一个包含该目录下所有文件和目录的路径的文件
@@ -161,7 +207,7 @@ func createDirMap() bool {
 }
 
 func PrintUasge() {
-	usage := "Usage: dirsync.exe -dir need/send/dir"
+	usage := "Usage: dirsyncServer.exe -dir need/send/dir"
 	fmt.Println(usage)
 }
 
@@ -174,11 +220,12 @@ func main() {
 	}
 
 	// debug
-	fmt.Printf("rootDir: %s", rootDir)
+	fmt.Printf("rootDir: %s\n", rootDir)
 
 	bResult := createDirMap()
 	if bResult == false {
 		return
 	}
 
+	startTCPServer()
 }
